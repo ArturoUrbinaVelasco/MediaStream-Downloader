@@ -3,6 +3,7 @@ import shutil
 import asyncio
 import time
 import re
+import urllib.parse
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 import httpx
@@ -13,7 +14,7 @@ from app.services.progress import progress_manager
 from app.services.extractor import MediaExtractorService, INVIDIOUS_INSTANCES
 
 DEFAULT_STREAM_HEADERS = {
-    "User-Agent": "com.google.android.youtube/19.29.37 (Linux; U; Android 14)",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
     "Accept": "*/*",
     "Accept-Encoding": "identity",
 }
@@ -31,7 +32,8 @@ def format_speed(speed_bytes_sec: Optional[float]) -> str:
     return f"{kb:.0f} KB/s"
 
 def sanitize_filename(name: str) -> str:
-    return re.sub(r'[\\/*?:"<>|]', "", name).strip() or "media"
+    cleaned = re.sub(r'[\\/*?:"<>|]', "", name).strip()
+    return cleaned[:120] if cleaned else "media"
 
 
 class MediaDownloaderService:
@@ -39,6 +41,23 @@ class MediaDownloaderService:
     Executes asynchronous downloads using yt-dlp with real-time SSE progress reporting.
     Features automated multi-tier fail-safe for YouTube cloud datacenter environments.
     """
+
+    @staticmethod
+    def _proxify_url(stream_url: str, instance_url: str) -> str:
+        """
+        Rewrites stream CDN URL to route through the Invidious instance proxy,
+        bypassing YouTube client-IP binding and datacenter IP blocks.
+        """
+        raw_parsed = urllib.parse.urlparse(stream_url)
+        inst_parsed = urllib.parse.urlparse(instance_url)
+        return urllib.parse.urlunparse((
+            inst_parsed.scheme,
+            inst_parsed.netloc,
+            raw_parsed.path,
+            raw_parsed.params,
+            raw_parsed.query,
+            raw_parsed.fragment
+        ))
 
     def _build_ydl_options(
         self,
@@ -154,7 +173,7 @@ class MediaDownloaderService:
         pct_span: float,
         status_label: str = "downloading"
     ) -> None:
-        chunk_size = 512 * 1024  # 512 KB
+        chunk_size = 512 * 1024  # 512 KB chunks
         downloaded = 0
         t_start = time.time()
 
@@ -169,7 +188,7 @@ class MediaDownloaderService:
                     f_out.write(resp.content)
                     downloaded += len(resp.content)
                 else:
-                    break
+                    raise RuntimeError(f"Fallo en descarga de fragmento (HTTP {resp.status_code})")
 
                 elapsed = time.time() - t_start
                 speed_val = (downloaded / elapsed) if elapsed > 0 else 0
@@ -196,24 +215,25 @@ class MediaDownloaderService:
         if not video_id:
             raise ValueError("No se pudo identificar el ID del video de YouTube.")
 
-        # Emit initial status
         await progress_manager.emit_progress(
             task_id,
             ProgressEvent(task_id=task_id, status="starting", percent=2.0)
         )
 
-        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
             meta = None
+            active_instance = None
             for instance in INVIDIOUS_INSTANCES:
                 try:
                     resp = await client.get(f"{instance}/api/v1/videos/{video_id}")
                     if resp.status_code == 200:
                         meta = resp.json()
+                        active_instance = instance
                         break
                 except Exception:
                     continue
 
-            if not meta:
+            if not meta or not active_instance:
                 raise RuntimeError("No fue posible consultar los flujos de medios en los servidores de respaldo.")
 
             title = sanitize_filename(meta.get("title", "YouTube Media"))
@@ -228,16 +248,18 @@ class MediaDownloaderService:
             ffmpeg_ok = is_ffmpeg_available()
 
             if is_audio_only:
-                # Select best audio stream
                 selected_audio = max(audio_formats, key=lambda f: int(f.get("bitrate") or 0))
                 audio_size = int(selected_audio.get("clen") or 0)
                 if audio_size == 0:
                     audio_size = int(selected_audio.get("bitrate", 128000)) * int(meta.get("lengthSeconds", 180)) // 8
 
-                temp_audio = settings.TEMP_DOWNLOAD_DIR / f"{task_id}_raw.m4a"
+                proxied_url = self._proxify_url(selected_audio["url"], active_instance)
+                raw_container = selected_audio.get("container") or ("webm" if "webm" in selected_audio.get("type", "") else "m4a")
+                temp_audio = settings.TEMP_DOWNLOAD_DIR / f"{task_id}_raw.{raw_container}"
+
                 await self._stream_download_chunked(
                     client=client,
-                    stream_url=selected_audio["url"],
+                    stream_url=proxied_url,
                     output_path=temp_audio,
                     total_size=audio_size,
                     task_id=task_id,
@@ -260,11 +282,13 @@ class MediaDownloaderService:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE
                     )
-                    await proc.communicate()
+                    stdout, stderr = await proc.communicate()
+                    if proc.returncode != 0:
+                        raise RuntimeError(f"FFmpeg audio transcode failed: {stderr.decode()[:200]}")
                     if temp_audio.exists():
                         temp_audio.unlink(missing_ok=True)
                 else:
-                    final_file = settings.TEMP_DOWNLOAD_DIR / f"{task_id}.m4a"
+                    final_file = settings.TEMP_DOWNLOAD_DIR / f"{task_id}.{raw_container}"
                     temp_audio.rename(final_file)
 
                 progress_manager.set_task_file(task_id, final_file)
@@ -282,8 +306,7 @@ class MediaDownloaderService:
             else:
                 # Video download
                 best_audio = max(audio_formats, key=lambda f: int(f.get("bitrate") or 0)) if audio_formats else None
-                
-                # Match video preset
+
                 if preset == FormatPreset.VIDEO_1080P:
                     candidates = [f for f in video_formats if "1080" in f.get("qualityLabel", "")]
                     selected_video = candidates[0] if candidates else video_formats[0]
@@ -291,17 +314,19 @@ class MediaDownloaderService:
                     candidates = [f for f in video_formats if "720" in f.get("qualityLabel", "")]
                     selected_video = candidates[0] if candidates else video_formats[0]
                 else:
-                    # VIDEO_BEST: highest resolution
                     selected_video = max(video_formats, key=lambda f: int(f.get("bitrate") or 0))
 
                 video_size = int(selected_video.get("clen") or 0)
                 if video_size == 0:
                     video_size = int(selected_video.get("bitrate", 1000000)) * int(meta.get("lengthSeconds", 180)) // 8
 
-                temp_video = settings.TEMP_DOWNLOAD_DIR / f"{task_id}_vid.mp4"
+                proxied_vid_url = self._proxify_url(selected_video["url"], active_instance)
+                vid_container = selected_video.get("container") or "mp4"
+                temp_video = settings.TEMP_DOWNLOAD_DIR / f"{task_id}_vid.{vid_container}"
+
                 await self._stream_download_chunked(
                     client=client,
-                    stream_url=selected_video["url"],
+                    stream_url=proxied_vid_url,
                     output_path=temp_video,
                     total_size=video_size,
                     task_id=task_id,
@@ -315,10 +340,13 @@ class MediaDownloaderService:
                     if audio_size == 0:
                         audio_size = int(best_audio.get("bitrate", 128000)) * int(meta.get("lengthSeconds", 180)) // 8
 
-                    temp_audio = settings.TEMP_DOWNLOAD_DIR / f"{task_id}_aud.m4a"
+                    proxied_aud_url = self._proxify_url(best_audio["url"], active_instance)
+                    aud_container = best_audio.get("container") or "m4a"
+                    temp_audio = settings.TEMP_DOWNLOAD_DIR / f"{task_id}_aud.{aud_container}"
+
                     await self._stream_download_chunked(
                         client=client,
-                        stream_url=best_audio["url"],
+                        stream_url=proxied_aud_url,
                         output_path=temp_audio,
                         total_size=audio_size,
                         task_id=task_id,
@@ -342,7 +370,9 @@ class MediaDownloaderService:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE
                     )
-                    await proc.communicate()
+                    stdout, stderr = await proc.communicate()
+                    if proc.returncode != 0:
+                        raise RuntimeError(f"FFmpeg video merge failed: {stderr.decode()[:200]}")
 
                     temp_video.unlink(missing_ok=True)
                     temp_audio.unlink(missing_ok=True)
@@ -398,13 +428,19 @@ class MediaDownloaderService:
             await progress_manager.emit_progress(task_id, final_event)
 
         except Exception as e:
-            # If YouTube and yt-dlp failed (e.g. cloud datacenter IP blocked), activate Invidious fallback
             if is_youtube:
                 try:
                     await self._download_via_invidious(task_id, target_url, preset, custom_format_id)
                     return
                 except Exception as inv_err:
-                    e = inv_err
+                    error_event = ProgressEvent(
+                        task_id=task_id,
+                        status="error",
+                        percent=0.0,
+                        error=str(inv_err)
+                    )
+                    await progress_manager.emit_progress(task_id, error_event)
+                    return
 
             error_event = ProgressEvent(
                 task_id=task_id,
