@@ -1,7 +1,8 @@
 import re
 import urllib.parse
 import asyncio
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+import httpx
 import yt_dlp
 from app.domain.schemas import MediaMetadataResponse, MediaFormat, PlatformType
 
@@ -12,10 +13,18 @@ DEFAULT_HTTP_HEADERS = {
     "Sec-Fetch-Mode": "navigate",
 }
 
+INVIDIOUS_INSTANCES = [
+    "https://yt.chocolatemoo53.com",
+    "https://inv.nadeko.net",
+    "https://invidious.nerdvpn.de"
+]
+
+
 class MediaExtractorService:
     """
     Handles URL inspection, platform detection, and metadata extraction.
     Follows Clean Architecture & SRP: focuses only on query extraction.
+    Features automated multi-tier fallback (yt-dlp visionos/android -> Invidious API).
     """
 
     @staticmethod
@@ -25,7 +34,6 @@ class MediaExtractorService:
         """
         try:
             parsed = urllib.parse.urlparse(url)
-            # If it's a YouTube video link with &list=, strip list param unless it's a playlist page
             if ("youtube.com" in parsed.netloc or "youtu.be" in parsed.netloc) and "/playlist" not in parsed.path:
                 qs = urllib.parse.parse_qs(parsed.query)
                 if "v" in qs:
@@ -34,6 +42,18 @@ class MediaExtractorService:
             return url
         except Exception:
             return url
+
+    @staticmethod
+    def extract_youtube_video_id(url: str) -> Optional[str]:
+        patterns = [
+            r'(?:v=|\/v\/|youtu\.be\/|embed\/|\/live\/|\/shorts\/)([a-zA-Z0-9_-]{11})',
+            r'^([a-zA-Z0-9_-]{11})$'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        return None
 
     @staticmethod
     def detect_platform(url: str) -> PlatformType:
@@ -68,7 +88,7 @@ class MediaExtractorService:
             "js_runtimes": {"node": {}},
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["android", "ios", "mweb", "web"],
+                    "player_client": ["visionos", "android"],
                 }
             },
         }
@@ -89,30 +109,97 @@ class MediaExtractorService:
             return "La plataforma temporalmente no respondió. Por favor intenta de nuevo en unos segundos."
         return raw_error
 
-    async def extract_metadata(self, url: str) -> MediaMetadataResponse:
+    async def _extract_via_invidious(self, url: str) -> MediaMetadataResponse:
         """
-        Asynchronously inspects URL to extract detailed media metadata.
-        Runs synchronous yt-dlp in a separate thread pool.
+        Fallback extraction for YouTube when datacenter IPs are blocked by Google.
+        Uses public Invidious high-availability API endpoints.
         """
-        clean_target_url = self.clean_url(url)
-        loop = asyncio.get_running_loop()
-        try:
-            info = await loop.run_in_executor(None, self._extract_sync, clean_target_url)
-        except Exception as e:
-            friendly_err = self._sanitize_error_message(str(e))
-            raise ValueError(friendly_err)
+        video_id = self.extract_youtube_video_id(url)
+        if not video_id:
+            raise ValueError("No se pudo identificar el identificador del video de YouTube.")
 
-        platform = self.detect_platform(clean_target_url)
+        last_error = None
+        async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
+            for instance in INVIDIOUS_INSTANCES:
+                try:
+                    api_url = f"{instance}/api/v1/videos/{video_id}"
+                    resp = await client.get(api_url, headers=DEFAULT_HTTP_HEADERS)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        return self._parse_invidious_response(video_id, url, data)
+                except Exception as err:
+                    last_error = err
+                    continue
+
+        raise ValueError(
+            self._sanitize_error_message(str(last_error or "Invidious fallback failed"))
+        )
+
+    def _parse_invidious_response(self, video_id: str, original_url: str, data: Dict[str, Any]) -> MediaMetadataResponse:
         formats: List[MediaFormat] = []
+        adaptive = data.get("adaptiveFormats", [])
 
-        raw_formats = info.get("formats", [])
+        for f in adaptive:
+            ftype = f.get("type", "")
+            has_video = "video" in ftype
+            has_audio = "audio" in ftype
+            if not has_video and not has_audio:
+                continue
+
+            itag = str(f.get("itag", ""))
+            ext = f.get("container") or ("mp4" if "mp4" in ftype else "webm")
+            res = f.get("resolution") or f.get("qualityLabel")
+            filesize = int(f.get("clen")) if f.get("clen") else f.get("filesize")
+            bitrate = f.get("bitrate")
+
+            label_parts = []
+            if res:
+                label_parts.append(res)
+            elif has_audio and bitrate:
+                kbps = int(bitrate) // 1000
+                label_parts.append(f"{kbps}kbps Audio")
+            if ext:
+                label_parts.append(ext.upper())
+
+            label = " - ".join(label_parts) if label_parts else ext.upper()
+
+            formats.append(
+                MediaFormat(
+                    format_id=itag,
+                    ext=ext,
+                    resolution=res,
+                    filesize=filesize,
+                    has_video=has_video,
+                    has_audio=has_audio,
+                    quality_label=label
+                )
+            )
+
+        # Select highest quality thumbnail
+        thumbnails = data.get("videoThumbnails", [])
+        thumbnail_url = thumbnails[-1]["url"] if thumbnails else f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+
+        return MediaMetadataResponse(
+            id=video_id,
+            url=original_url,
+            title=str(data.get("title", "YouTube Media")),
+            uploader=str(data.get("author", "YouTube Channel")),
+            duration=int(data.get("lengthSeconds") or 0),
+            thumbnail=thumbnail_url,
+            platform=PlatformType.YOUTUBE,
+            available_formats=formats,
+            view_count=data.get("viewCount"),
+            description=data.get("description", "")[:300] if data.get("description") else None
+        )
+
+    def _parse_ytdlp_formats(self, raw_formats: List[Dict[str, Any]]) -> List[MediaFormat]:
+        formats: List[MediaFormat] = []
         for f in raw_formats:
             vcodec = f.get("vcodec", "none")
             acodec = f.get("acodec", "none")
             has_video = vcodec != "none"
             has_audio = acodec != "none"
-            
-            # Filter out non-functional fragments
+
             if not has_video and not has_audio:
                 continue
 
@@ -123,7 +210,7 @@ class MediaExtractorService:
             format_id = str(f.get("format_id", ""))
             ext = f.get("ext", "mp4")
             filesize = f.get("filesize") or f.get("filesize_approx")
-            
+
             note_parts = []
             if resolution:
                 note_parts.append(resolution)
@@ -131,7 +218,7 @@ class MediaExtractorService:
                 note_parts.append(f"{f.get('fps')}fps")
             if f.get("tbr"):
                 note_parts.append(f"{int(f.get('tbr'))}k")
-            
+
             label = " - ".join(note_parts) if note_parts else ext.upper()
 
             formats.append(
@@ -145,18 +232,47 @@ class MediaExtractorService:
                     quality_label=label
                 )
             )
+        return formats
 
-        return MediaMetadataResponse(
-            id=str(info.get("id", "")),
-            url=clean_target_url,
-            title=str(info.get("title", "Untitled Media")),
-            uploader=str(info.get("uploader") or info.get("channel") or "Unknown"),
-            duration=int(info.get("duration") or 0),
-            thumbnail=info.get("thumbnail"),
-            platform=platform,
-            available_formats=formats,
-            view_count=info.get("view_count"),
-            description=info.get("description", "")[:300] if info.get("description") else None
-        )
+    async def extract_metadata(self, url: str) -> MediaMetadataResponse:
+        """
+        Asynchronously inspects URL to extract detailed media metadata.
+        Runs synchronous yt-dlp first; automatically falls back to Invidious
+        if YouTube extraction fails due to cloud datacenter IP blocks.
+        """
+        clean_target_url = self.clean_url(url)
+        platform = self.detect_platform(clean_target_url)
+        loop = asyncio.get_running_loop()
+
+        try:
+            info = await loop.run_in_executor(None, self._extract_sync, clean_target_url)
+            formats = self._parse_ytdlp_formats(info.get("formats", []))
+            
+            # If yt-dlp extracted without usable audio/video formats on YouTube, trigger fallback
+            if platform == PlatformType.YOUTUBE and not formats:
+                raise ValueError("No formats returned by yt-dlp")
+
+            return MediaMetadataResponse(
+                id=str(info.get("id", "")),
+                url=clean_target_url,
+                title=str(info.get("title", "Untitled Media")),
+                uploader=str(info.get("uploader") or info.get("channel") or "Unknown"),
+                duration=int(info.get("duration") or 0),
+                thumbnail=info.get("thumbnail"),
+                platform=platform,
+                available_formats=formats,
+                view_count=info.get("view_count"),
+                description=info.get("description", "")[:300] if info.get("description") else None
+            )
+        except Exception as e:
+            if platform == PlatformType.YOUTUBE:
+                try:
+                    return await self._extract_via_invidious(clean_target_url)
+                except Exception:
+                    pass
+
+            friendly_err = self._sanitize_error_message(str(e))
+            raise ValueError(friendly_err)
+
 
 extractor_service = MediaExtractorService()

@@ -50,3 +50,10 @@ async def test_progress_manager_lifecycle():
     )
     await pm.emit_progress(task_id, event)
     assert pm.get_task_status(task_id) == "downloading"
+
+def test_extract_youtube_video_id():
+    assert MediaExtractorService.extract_youtube_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+    assert MediaExtractorService.extract_youtube_video_id("https://youtu.be/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+    assert MediaExtractorService.extract_youtube_video_id("https://www.youtube.com/shorts/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+    assert MediaExtractorService.extract_youtube_video_id("dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+
