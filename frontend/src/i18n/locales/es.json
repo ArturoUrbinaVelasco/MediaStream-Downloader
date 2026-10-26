@@ -1,0 +1,74 @@
+{
+  "appName": "MediaStream Downloader",
+  "tagline": "Descargas rápidas, limpias y en máxima calidad",
+  "input": {
+    "placeholder": "Pega el enlace de video o audio aquí...",
+    "pasteButton": "Pegar",
+    "clearButton": "Limpiar",
+    "inspectButton": "Inspeccionar",
+    "inspecting": "Analizando enlace...",
+    "invalidUrl": "Por favor ingresa una URL válida (YouTube, TikTok, Instagram, Twitter, etc.)",
+    "clipboardError": "No se pudo acceder al portapapeles. Pega el enlace manualmente."
+  },
+  "platforms": {
+    "supported": "Plataformas compatibles:",
+    "all": "y más de 1,000 sitios web"
+  },
+  "preview": {
+    "duration": "Duración",
+    "views": "Vistas",
+    "author": "Canal / Autor",
+    "formatChoice": "Elige tu formato preferido"
+  },
+  "presets": {
+    "video_best": {
+      "title": "Video MP4 HD",
+      "subtitle": "Máxima resolución disponible (1080p / 4K)"
+    },
+    "video_1080p": {
+      "title": "Video 1080p",
+      "subtitle": "Full HD balanceado"
+    },
+    "video_720p": {
+      "title": "Video 720p",
+      "subtitle": "HD ligero para ahorrar datos"
+    },
+    "audio_best": {
+      "title": "Audio MP3 HQ",
+      "subtitle": "320 kbps Alta fidelidad sonora"
+    },
+    "audio_128k": {
+      "title": "Audio MP3 Ligero",
+      "subtitle": "128 kbps Ideal para podcasts y voz"
+    }
+  },
+  "progress": {
+    "starting": "Iniciando descarga...",
+    "downloading": "Descargando contenido...",
+    "processing": "Convirtiendo y unificando medios...",
+    "finished": "¡Descarga completada con éxito!",
+    "error": "Error al procesar la descarga",
+    "speed": "Velocidad",
+    "eta": "Tiempo restante",
+    "downloadFile": "Guardar archivo en dispositivo",
+    "newDownload": "Descargar otro enlace"
+  },
+  "history": {
+    "title": "Historial de descargas",
+    "empty": "Aún no tienes descargas registradas en este dispositivo.",
+    "clearAll": "Borrar historial",
+    "confirmClear": "¿Estás seguro de que deseas eliminar tu historial local?",
+    "downloadAgain": "Volver a descargar"
+  },
+  "theme": {
+    "light": "Claro",
+    "dark": "Oscuro",
+    "system": "Sistema"
+  },
+  "status": {
+    "serverConnected": "Servidor conectado",
+    "serverDisconnected": "Servidor fuera de línea",
+    "ffmpegAvailable": "FFmpeg activo (conversión HD habilitada)",
+    "ffmpegMissing": "FFmpeg no detectado (modo descarga directa activa)"
+  }
+}

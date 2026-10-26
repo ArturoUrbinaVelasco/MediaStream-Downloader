@@ -1,0 +1,74 @@
+{
+  "appName": "MediaStream Downloader",
+  "tagline": "Fast, clean downloads in the highest quality possible",
+  "input": {
+    "placeholder": "Paste video or audio link here...",
+    "pasteButton": "Paste",
+    "clearButton": "Clear",
+    "inspectButton": "Inspect",
+    "inspecting": "Analyzing link...",
+    "invalidUrl": "Please enter a valid URL (YouTube, TikTok, Instagram, Twitter, etc.)",
+    "clipboardError": "Could not access clipboard. Please paste link manually."
+  },
+  "platforms": {
+    "supported": "Supported platforms:",
+    "all": "and 1,000+ web sites"
+  },
+  "preview": {
+    "duration": "Duration",
+    "views": "Views",
+    "author": "Channel / Author",
+    "formatChoice": "Choose your preferred format"
+  },
+  "presets": {
+    "video_best": {
+      "title": "Video MP4 HD",
+      "subtitle": "Highest resolution available (1080p / 4K)"
+    },
+    "video_1080p": {
+      "title": "Video 1080p",
+      "subtitle": "Full HD balanced"
+    },
+    "video_720p": {
+      "title": "Video 720p",
+      "subtitle": "Lightweight HD to save data"
+    },
+    "audio_best": {
+      "title": "Audio MP3 HQ",
+      "subtitle": "320 kbps High Fidelity Audio"
+    },
+    "audio_128k": {
+      "title": "Audio MP3 Light",
+      "subtitle": "128 kbps Ideal for podcasts and voice"
+    }
+  },
+  "progress": {
+    "starting": "Starting download...",
+    "downloading": "Downloading content...",
+    "processing": "Converting and merging media...",
+    "finished": "Download completed successfully!",
+    "error": "Error processing download",
+    "speed": "Speed",
+    "eta": "Time remaining",
+    "downloadFile": "Save file to device",
+    "newDownload": "Download another link"
+  },
+  "history": {
+    "title": "Download History",
+    "empty": "No downloads recorded on this device yet.",
+    "clearAll": "Clear history",
+    "confirmClear": "Are you sure you want to delete your local history?",
+    "downloadAgain": "Download again"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "status": {
+    "serverConnected": "Server connected",
+    "serverDisconnected": "Server offline",
+    "ffmpegAvailable": "FFmpeg active (HD conversion enabled)",
+    "ffmpegMissing": "FFmpeg not detected (direct stream mode active)"
+  }
+}
