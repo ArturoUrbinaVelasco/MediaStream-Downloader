@@ -276,7 +276,10 @@ class MediaDownloaderService:
                 if ffmpeg_ok:
                     final_file = settings.TEMP_DOWNLOAD_DIR / f"{task_id}.mp3"
                     bitrate = "320k" if preset == FormatPreset.AUDIO_BEST else "128k"
-                    cmd = ["ffmpeg", "-y", "-i", str(temp_audio), "-vn", "-b:a", bitrate, str(final_file)]
+                    cmd = [
+                        "ffmpeg", "-y", "-nostats", "-loglevel", "error", "-threads", "0",
+                        "-i", str(temp_audio), "-vn", "-b:a", bitrate, str(final_file)
+                    ]
                     proc = await asyncio.create_subprocess_exec(
                         *cmd,
                         stdout=asyncio.subprocess.PIPE,
@@ -362,7 +365,8 @@ class MediaDownloaderService:
 
                     final_file = settings.TEMP_DOWNLOAD_DIR / f"{task_id}.mp4"
                     cmd = [
-                        "ffmpeg", "-y", "-i", str(temp_video), "-i", str(temp_audio),
+                        "ffmpeg", "-y", "-nostats", "-loglevel", "error", "-threads", "0",
+                        "-i", str(temp_video), "-i", str(temp_audio),
                         "-c:v", "copy", "-c:a", "aac", "-shortest", str(final_file)
                     ]
                     proc = await asyncio.create_subprocess_exec(
@@ -404,6 +408,15 @@ class MediaDownloaderService:
 
         target_url = MediaExtractorService.clean_url(url)
         is_youtube = MediaExtractorService.detect_platform(target_url) == PlatformType.YOUTUBE
+
+        # YouTube optimization: Prioritize Invidious stream extraction to bypass datacenter IP restrictions
+        if is_youtube:
+            try:
+                await self._download_via_invidious(task_id, target_url, preset, custom_format_id)
+                return
+            except Exception:
+                # If Invidious instances fail, attempt direct yt-dlp
+                pass
 
         try:
             ydl_opts = self._build_ydl_options(task_id, preset, custom_format_id, loop)

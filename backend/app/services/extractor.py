@@ -237,18 +237,26 @@ class MediaExtractorService:
     async def extract_metadata(self, url: str) -> MediaMetadataResponse:
         """
         Asynchronously inspects URL to extract detailed media metadata.
-        Runs synchronous yt-dlp first; automatically falls back to Invidious
-        if YouTube extraction fails due to cloud datacenter IP blocks.
+        For YouTube, prioritizes the ultra-fast Invidious API (0.8s response) to avoid
+        datacenter IP blocks on cloud servers, with yt-dlp fallback.
+        For other platforms (TikTok, SoundCloud, Twitter, Instagram), uses yt-dlp.
         """
         clean_target_url = self.clean_url(url)
         platform = self.detect_platform(clean_target_url)
         loop = asyncio.get_running_loop()
 
+        # YouTube optimization: Invidious first for zero-latency extraction on cloud servers
+        if platform == PlatformType.YOUTUBE:
+            try:
+                return await self._extract_via_invidious(clean_target_url)
+            except Exception:
+                # Fall back to yt-dlp if Invidious instances are unavailable
+                pass
+
         try:
             info = await loop.run_in_executor(None, self._extract_sync, clean_target_url)
             formats = self._parse_ytdlp_formats(info.get("formats", []))
             
-            # If yt-dlp extracted without usable audio/video formats on YouTube, trigger fallback
             if platform == PlatformType.YOUTUBE and not formats:
                 raise ValueError("No formats returned by yt-dlp")
 
