@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkles, CheckCircle } from 'lucide-react';
+import { Sparkles, CheckCircle, AlertCircle, X } from 'lucide-react';
 
 import { useSettingsStore } from './store/useSettingsStore';
 import { useHistoryStore } from './store/useHistoryStore';
@@ -32,6 +32,7 @@ export const App: React.FC = () => {
 
   const [metadata, setMetadata] = useState<MediaMetadata | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeProgress, setActiveProgress] = useState<ProgressEventPayload | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | undefined>(undefined);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
@@ -68,6 +69,7 @@ export const App: React.FC = () => {
 
   const handleInspect = async (url: string) => {
     setIsLoading(true);
+    setErrorMessage(null);
     setActiveProgress(null);
     setDownloadUrl(undefined);
 
@@ -75,7 +77,7 @@ export const App: React.FC = () => {
       const data = await extractMetadata(url);
       setMetadata(data);
     } catch (err: any) {
-      alert(err.message || t('input.invalidUrl'));
+      setErrorMessage(err.message || t('input.invalidUrl'));
     } finally {
       setIsLoading(false);
     }
@@ -83,6 +85,7 @@ export const App: React.FC = () => {
 
   const handleSelectFormat = async (preset: FormatPreset, customFormatId?: string) => {
     if (!metadata) return;
+    setErrorMessage(null);
 
     try {
       const { task_id } = await startDownload(metadata.url, preset, customFormatId);
@@ -133,13 +136,14 @@ export const App: React.FC = () => {
 
       return () => unsubscribe();
     } catch (err: any) {
-      alert(err.message || t('progress.error'));
+      setErrorMessage(err.message || t('progress.error'));
       setActiveProgress(null);
     }
   };
 
   const handleReset = () => {
     setMetadata(null);
+    setErrorMessage(null);
     setActiveProgress(null);
     setDownloadUrl(undefined);
   };
@@ -163,6 +167,25 @@ export const App: React.FC = () => {
             {t('tagline')}
           </p>
         </div>
+
+        {/* Error Notification Banner */}
+        {errorMessage && (
+          <div className="w-full max-w-2xl mx-auto flex items-start justify-between gap-3 p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-sm shadow-sm animate-fade-in">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-rose-500" />
+              <div>
+                <p className="font-semibold">Aviso</p>
+                <p className="text-xs opacity-90 mt-0.5">{errorMessage}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setErrorMessage(null)}
+              className="p-1 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-500 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Input Bar */}
         <UrlInput onInspect={handleInspect} isLoading={isLoading} />

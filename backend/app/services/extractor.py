@@ -1,14 +1,39 @@
 import re
+import urllib.parse
 import asyncio
 from typing import Dict, Any, List
 import yt_dlp
 from app.domain.schemas import MediaMetadataResponse, MediaFormat, PlatformType
+
+DEFAULT_HTTP_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+    "Sec-Fetch-Mode": "navigate",
+}
 
 class MediaExtractorService:
     """
     Handles URL inspection, platform detection, and metadata extraction.
     Follows Clean Architecture & SRP: focuses only on query extraction.
     """
+
+    @staticmethod
+    def clean_url(url: str) -> str:
+        """
+        Removes noisy playlist / tracking parameters from single video URLs.
+        """
+        try:
+            parsed = urllib.parse.urlparse(url)
+            # If it's a YouTube video link with &list=, strip list param unless it's a playlist page
+            if ("youtube.com" in parsed.netloc or "youtu.be" in parsed.netloc) and "/playlist" not in parsed.path:
+                qs = urllib.parse.parse_qs(parsed.query)
+                if "v" in qs:
+                    clean_query = urllib.parse.urlencode({"v": qs["v"][0]})
+                    return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", clean_query, ""))
+            return url
+        except Exception:
+            return url
 
     @staticmethod
     def detect_platform(url: str) -> PlatformType:
@@ -38,22 +63,46 @@ class MediaExtractorService:
             "skip_download": True,
             "extract_flat": False,
             "noplaylist": True,
+            "nocheckcertificate": True,
+            "http_headers": DEFAULT_HTTP_HEADERS,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "ios", "mweb", "web"],
+                    "player_skip": ["js", "configs", "webpage"],
+                }
+            },
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             return ydl.extract_info(url, download=False)
+
+    def _sanitize_error_message(self, raw_error: str) -> str:
+        err = raw_error.lower()
+        if "this video is unavailable" in err or "video unavailable" in err:
+            return "El video no está disponible, es privado o fue eliminado de la plataforma."
+        if "private video" in err:
+            return "Este video es privado y no permite acceso público."
+        if "sign in to confirm your age" in err or "age" in err:
+            return "El contenido tiene restricción de edad en la plataforma."
+        if "not available in your country" in err or "geographic" in err:
+            return "Este contenido tiene restricciones geográficas regionales."
+        if "failed to extract any player response" in err:
+            return "La plataforma temporalmente no respondió. Por favor intenta de nuevo en unos segundos."
+        return raw_error
 
     async def extract_metadata(self, url: str) -> MediaMetadataResponse:
         """
         Asynchronously inspects URL to extract detailed media metadata.
         Runs synchronous yt-dlp in a separate thread pool.
         """
+        clean_target_url = self.clean_url(url)
         loop = asyncio.get_running_loop()
         try:
-            info = await loop.run_in_executor(None, self._extract_sync, url)
+            info = await loop.run_in_executor(None, self._extract_sync, clean_target_url)
         except Exception as e:
-            raise ValueError(f"Failed to extract metadata: {str(e)}")
+            friendly_err = self._sanitize_error_message(str(e))
+            raise ValueError(friendly_err)
 
-        platform = self.detect_platform(url)
+        platform = self.detect_platform(clean_target_url)
         formats: List[MediaFormat] = []
 
         raw_formats = info.get("formats", [])
@@ -99,7 +148,7 @@ class MediaExtractorService:
 
         return MediaMetadataResponse(
             id=str(info.get("id", "")),
-            url=url,
+            url=clean_target_url,
             title=str(info.get("title", "Untitled Media")),
             uploader=str(info.get("uploader") or info.get("channel") or "Unknown"),
             duration=int(info.get("duration") or 0),

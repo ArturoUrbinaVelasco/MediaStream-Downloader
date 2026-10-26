@@ -76,6 +76,17 @@ class MediaDownloaderService:
             "noplaylist": True,
             "progress_hooks": [progress_hook],
             "nocheckcertificate": True,
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+            },
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "ios", "mweb", "web"],
+                    "player_skip": ["js", "configs", "webpage"],
+                }
+            },
         }
 
         if custom_format_id:
@@ -130,9 +141,11 @@ class MediaDownloaderService:
         progress_manager.register_task(task_id)
 
         try:
+            from app.services.extractor import MediaExtractorService
+            target_url = MediaExtractorService.clean_url(url)
             ydl_opts = self._build_ydl_options(task_id, preset, custom_format_id, loop)
             title = await loop.run_in_executor(
-                None, self._execute_download_sync, url, ydl_opts
+                None, self._execute_download_sync, target_url, ydl_opts
             )
 
             # Locate downloaded file with task_id prefix
