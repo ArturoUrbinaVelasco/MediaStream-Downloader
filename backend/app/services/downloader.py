@@ -277,11 +277,12 @@ class MediaDownloaderService:
                     final_file = settings.TEMP_DOWNLOAD_DIR / f"{task_id}.mp3"
                     bitrate = "320k" if preset == FormatPreset.AUDIO_BEST else "128k"
                     cmd = [
-                        "ffmpeg", "-y", "-nostats", "-loglevel", "error", "-threads", "0",
+                        "ffmpeg", "-y", "-nostdin", "-nostats", "-loglevel", "error", "-threads", "0",
                         "-i", str(temp_audio), "-vn", "-b:a", bitrate, str(final_file)
                     ]
                     proc = await asyncio.create_subprocess_exec(
                         *cmd,
+                        stdin=asyncio.subprocess.DEVNULL,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE
                     )
@@ -365,12 +366,13 @@ class MediaDownloaderService:
 
                     final_file = settings.TEMP_DOWNLOAD_DIR / f"{task_id}.mp4"
                     cmd = [
-                        "ffmpeg", "-y", "-nostats", "-loglevel", "error", "-threads", "0",
+                        "ffmpeg", "-y", "-nostdin", "-nostats", "-loglevel", "error", "-threads", "0",
                         "-i", str(temp_video), "-i", str(temp_audio),
                         "-c:v", "copy", "-c:a", "aac", "-shortest", str(final_file)
                     ]
                     proc = await asyncio.create_subprocess_exec(
                         *cmd,
+                        stdin=asyncio.subprocess.DEVNULL,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE
                     )
