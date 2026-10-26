@@ -2,9 +2,10 @@
 # Build / Base Stage
 FROM python:3.12-slim AS base
 
-# Install system dependencies (FFmpeg, CA certificates)
+# Install system dependencies (FFmpeg, Node.js for JS challenge solver, CA certificates)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    nodejs \
     ca-certificates \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -21,6 +22,7 @@ FROM python:3.12-slim AS runner
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    nodejs \
     ca-certificates \
     curl \
     && rm -rf /var/lib/apt/lists/*

@@ -65,10 +65,10 @@ class MediaExtractorService:
             "noplaylist": True,
             "nocheckcertificate": True,
             "http_headers": DEFAULT_HTTP_HEADERS,
+            "js_runtimes": {"node": {}},
             "extractor_args": {
                 "youtube": {
                     "player_client": ["android", "ios", "mweb", "web"],
-                    "player_skip": ["js", "configs", "webpage"],
                 }
             },
         }

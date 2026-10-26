@@ -81,10 +81,10 @@ class MediaDownloaderService:
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
             },
+            "js_runtimes": {"node": {}},
             "extractor_args": {
                 "youtube": {
                     "player_client": ["android", "ios", "mweb", "web"],
-                    "player_skip": ["js", "configs", "webpage"],
                 }
             },
         }
