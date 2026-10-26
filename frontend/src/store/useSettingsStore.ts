@@ -38,18 +38,29 @@ export const useSettingsStore = create<SettingsState>()(
 
       applyTheme: () => {
         const { theme } = get();
+        if (typeof document === 'undefined') return;
         const root = document.documentElement;
         const effectiveTheme = theme === 'system' ? getSystemTheme() : theme;
 
         if (effectiveTheme === 'dark') {
           root.classList.add('dark');
+          root.setAttribute('data-theme', 'dark');
         } else {
           root.classList.remove('dark');
+          root.setAttribute('data-theme', 'light');
         }
       },
     }),
     {
       name: 'mediastream_settings',
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.applyTheme();
+          if (state.language) {
+            i18n.changeLanguage(state.language);
+          }
+        }
+      },
     }
   )
 );

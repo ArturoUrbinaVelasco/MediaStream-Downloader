@@ -12,7 +12,10 @@
   },
   "platforms": {
     "supported": "Supported platforms:",
-    "all": "and 1,000+ web sites"
+    "all": "and 1,000+ web sites",
+    "tooltipTitle": "Additional Supported Sites",
+    "tooltipDesc": "Reddit, Pinterest, DailyMotion, Bandcamp, Bilibili, LinkedIn, Threads, Bluesky, Tumblr, Mixcloud, Streamable, Rumble and 1,000+ online web platforms.",
+    "viewFullList": "View full official list on GitHub"
   },
   "preview": {
     "duration": "Duration",
@@ -59,6 +62,16 @@
     "clearAll": "Clear history",
     "confirmClear": "Are you sure you want to delete your local history?",
     "downloadAgain": "Download again"
+  },
+  "about": {
+    "title": "About MediaStream Downloader",
+    "developer": "Developer & Author",
+    "developerTitle": "Senior Software Developer & AI Specialist · AjuscoFix",
+    "bio": "Senior Application Developer with 13+ years building end-to-end software solutions, On-Premise Artificial Intelligence, mobile apps, and high-performance web architectures.",
+    "location": "Mexico City (CDMX)",
+    "contact": "Direct Contact Channels",
+    "portfolio": "Visit Personal Website",
+    "close": "Close"
   },
   "theme": {
     "light": "Light",

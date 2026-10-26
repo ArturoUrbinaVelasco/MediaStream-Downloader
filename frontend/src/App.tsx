@@ -10,6 +10,7 @@ import { PlatformBadges } from './components/PlatformBadges';
 import { MediaCard } from './components/MediaCard';
 import { ProgressBar } from './components/ProgressBar';
 import { HistoryDrawer } from './components/HistoryDrawer';
+import { AboutModal } from './components/AboutModal';
 
 import type {
   MediaMetadata,
@@ -36,6 +37,7 @@ export const App: React.FC = () => {
   const [activeProgress, setActiveProgress] = useState<ProgressEventPayload | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | undefined>(undefined);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
+  const [isAboutOpen, setIsAboutOpen] = useState<boolean>(false);
   const [healthStatus, setHealthStatus] = useState<HealthCheckResult | null>(null);
   const [serverOnline, setServerOnline] = useState<boolean>(true);
 
@@ -150,7 +152,10 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col transition-colors">
-      <Header onOpenHistory={() => setIsHistoryOpen(true)} />
+      <Header
+        onOpenHistory={() => setIsHistoryOpen(true)}
+        onOpenAbout={() => setIsAboutOpen(true)}
+      />
 
       {/* Main Container */}
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8 sm:py-12 flex flex-col items-center gap-8">
@@ -209,8 +214,8 @@ export const App: React.FC = () => {
       </main>
 
       {/* Bottom Status & Footer */}
-      <footer className="w-full py-4 border-t border-zinc-200 dark:border-zinc-800 text-center text-xs text-zinc-500 dark:text-zinc-400 bg-white/50 dark:bg-zinc-900/50">
-        <div className="max-w-4xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+      <footer className="w-full py-5 border-t border-zinc-200 dark:border-zinc-800 text-center text-xs text-zinc-500 dark:text-zinc-400 bg-white/60 dark:bg-zinc-900/60 transition-colors">
+        <div className="max-w-4xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div
               className={`w-2 h-2 rounded-full ${
@@ -228,7 +233,36 @@ export const App: React.FC = () => {
               </span>
             )}
           </div>
-          <div>MediaStream Downloader &copy; 2026 &bull; Cross-Platform Mobile & Web</div>
+
+          {/* Developer credit link & hits.sh counter */}
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <div>
+              Desarrollado por{' '}
+              <a
+                href="https://arturourbinavelasco.github.io/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold text-zinc-800 dark:text-zinc-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline"
+              >
+                Arturo Urbina Velasco &bull; AjuscoFix
+              </a>
+            </div>
+
+            {/* hits.sh visitor counter */}
+            <a
+              href="https://hits.sh/media-stream-downloader-bice.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Estadísticas de visitas con hits.sh"
+              className="inline-flex items-center opacity-85 hover:opacity-100 transition-opacity"
+            >
+              <img
+                alt="Visitas"
+                src="https://hits.sh/media-stream-downloader-bice.vercel.app.svg?view=today-total&style=flat-square&label=Visitas&color=6366f1"
+                className="h-5 rounded-xs"
+              />
+            </a>
+          </div>
         </div>
       </footer>
 
@@ -239,6 +273,12 @@ export const App: React.FC = () => {
         onSelectUrl={(url) => {
           handleInspect(url);
         }}
+      />
+
+      {/* About Modal */}
+      <AboutModal
+        isOpen={isAboutOpen}
+        onClose={() => setIsAboutOpen(false)}
       />
     </div>
   );

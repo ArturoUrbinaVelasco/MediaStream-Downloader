@@ -1,15 +1,16 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Download, Sun, Moon, Monitor, Clock, Globe } from 'lucide-react';
+import { Download, Sun, Moon, Monitor, Clock, Globe, User } from 'lucide-react';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { ThemeMode } from '../store/useSettingsStore';
 import { useHistoryStore } from '../store/useHistoryStore';
 
 interface HeaderProps {
   onOpenHistory: () => void;
+  onOpenAbout: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenHistory }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenAbout }) => {
   const { t } = useTranslation();
   const { language, setLanguage, theme, setTheme } = useSettingsStore();
   const historyItems = useHistoryStore((state) => state.items);
@@ -50,11 +51,21 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory }) => {
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* About / Contact Button */}
+          <button
+            onClick={onOpenAbout}
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 transition-all active:scale-95 cursor-pointer"
+            title="Acerca del Autor / About"
+          >
+            <User className="w-3.5 h-3.5 text-indigo-500" />
+            <span className="hidden sm:inline">Acerca de</span>
+          </button>
+
           {/* Language Toggle */}
           <button
             onClick={() => setLanguage(language === 'es' ? 'en' : 'es')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 transition-all active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 transition-all active:scale-95 cursor-pointer"
             title="Cambiar idioma / Switch language"
           >
             <Globe className="w-3.5 h-3.5 text-indigo-500" />
