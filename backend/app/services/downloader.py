@@ -248,7 +248,8 @@ class MediaDownloaderService:
             ffmpeg_ok = is_ffmpeg_available()
 
             if is_audio_only:
-                selected_audio = max(audio_formats, key=lambda f: int(f.get("bitrate") or 0))
+                m4a_candidates = [f for f in audio_formats if f.get("container") == "m4a"]
+                selected_audio = max(m4a_candidates or audio_formats, key=lambda f: int(f.get("bitrate") or 0))
                 audio_size = int(selected_audio.get("clen") or 0)
                 if audio_size == 0:
                     audio_size = int(selected_audio.get("bitrate", 128000)) * int(meta.get("lengthSeconds", 180)) // 8
@@ -277,7 +278,7 @@ class MediaDownloaderService:
                     final_file = settings.TEMP_DOWNLOAD_DIR / f"{task_id}.mp3"
                     bitrate = "320k" if preset == FormatPreset.AUDIO_BEST else "128k"
                     cmd = [
-                        "ffmpeg", "-y", "-nostdin", "-nostats", "-loglevel", "error", "-threads", "0",
+                        "ffmpeg", "-y", "-nostdin", "-nostats", "-loglevel", "error", "-threads", "1",
                         "-i", str(temp_audio), "-vn", "-b:a", bitrate, str(final_file)
                     ]
                     proc = await asyncio.create_subprocess_exec(
@@ -287,10 +288,12 @@ class MediaDownloaderService:
                         stderr=asyncio.subprocess.PIPE
                     )
                     stdout, stderr = await proc.communicate()
-                    if proc.returncode != 0:
-                        raise RuntimeError(f"FFmpeg audio transcode failed: {stderr.decode()[:200]}")
-                    if temp_audio.exists():
-                        temp_audio.unlink(missing_ok=True)
+                    if proc.returncode != 0 or not final_file.exists():
+                        final_file = settings.TEMP_DOWNLOAD_DIR / f"{task_id}.{raw_container}"
+                        temp_audio.rename(final_file)
+                    else:
+                        if temp_audio.exists():
+                            temp_audio.unlink(missing_ok=True)
                 else:
                     final_file = settings.TEMP_DOWNLOAD_DIR / f"{task_id}.{raw_container}"
                     temp_audio.rename(final_file)
@@ -308,17 +311,21 @@ class MediaDownloaderService:
                 )
 
             else:
-                # Video download
-                best_audio = max(audio_formats, key=lambda f: int(f.get("bitrate") or 0)) if audio_formats else None
+                # Video download with preferred MP4 container for fast -c copy remuxing
+                mp4_vids = [f for f in video_formats if f.get("container") == "mp4" or "mp4" in f.get("type", "")]
+                v_pool = mp4_vids if mp4_vids else video_formats
 
                 if preset == FormatPreset.VIDEO_1080P:
-                    candidates = [f for f in video_formats if "1080" in f.get("qualityLabel", "")]
-                    selected_video = candidates[0] if candidates else video_formats[0]
+                    candidates = [f for f in v_pool if "1080" in f.get("qualityLabel", "")]
+                    selected_video = candidates[0] if candidates else v_pool[0]
                 elif preset == FormatPreset.VIDEO_720P:
-                    candidates = [f for f in video_formats if "720" in f.get("qualityLabel", "")]
-                    selected_video = candidates[0] if candidates else video_formats[0]
+                    candidates = [f for f in v_pool if "720" in f.get("qualityLabel", "")]
+                    selected_video = candidates[0] if candidates else v_pool[0]
                 else:
-                    selected_video = max(video_formats, key=lambda f: int(f.get("bitrate") or 0))
+                    selected_video = max(v_pool, key=lambda f: int(f.get("bitrate") or 0))
+
+                m4a_auds = [f for f in audio_formats if f.get("container") == "m4a"]
+                best_audio = max(m4a_auds or audio_formats, key=lambda f: int(f.get("bitrate") or 0)) if audio_formats else None
 
                 video_size = int(selected_video.get("clen") or 0)
                 if video_size == 0:
@@ -366,9 +373,9 @@ class MediaDownloaderService:
 
                     final_file = settings.TEMP_DOWNLOAD_DIR / f"{task_id}.mp4"
                     cmd = [
-                        "ffmpeg", "-y", "-nostdin", "-nostats", "-loglevel", "error", "-threads", "0",
+                        "ffmpeg", "-y", "-nostdin", "-nostats", "-loglevel", "error", "-threads", "1",
                         "-i", str(temp_video), "-i", str(temp_audio),
-                        "-c:v", "copy", "-c:a", "aac", "-shortest", str(final_file)
+                        "-c", "copy", "-shortest", str(final_file)
                     ]
                     proc = await asyncio.create_subprocess_exec(
                         *cmd,
@@ -377,17 +384,20 @@ class MediaDownloaderService:
                         stderr=asyncio.subprocess.PIPE
                     )
                     stdout, stderr = await proc.communicate()
-                    if proc.returncode != 0:
-                        raise RuntimeError(f"FFmpeg video merge failed: {stderr.decode()[:200]}")
-
-                    temp_video.unlink(missing_ok=True)
-                    temp_audio.unlink(missing_ok=True)
+                    if proc.returncode != 0 or not final_file.exists():
+                        final_file = settings.TEMP_DOWNLOAD_DIR / f"{task_id}.{vid_container}"
+                        temp_video.rename(final_file)
+                        if temp_audio.exists():
+                            temp_audio.unlink(missing_ok=True)
+                    else:
+                        temp_video.unlink(missing_ok=True)
+                        temp_audio.unlink(missing_ok=True)
                 else:
-                    final_file = settings.TEMP_DOWNLOAD_DIR / f"{task_id}.mp4"
+                    final_file = settings.TEMP_DOWNLOAD_DIR / f"{task_id}.{vid_container}"
                     temp_video.rename(final_file)
 
                 progress_manager.set_task_file(task_id, final_file)
-                final_filename = f"{title}.mp4"
+                final_filename = f"{title}{final_file.suffix}"
                 await progress_manager.emit_progress(
                     task_id,
                     ProgressEvent(
