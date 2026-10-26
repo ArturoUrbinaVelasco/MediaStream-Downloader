@@ -4,6 +4,7 @@ import asyncio
 from typing import Dict, Any, List, Optional
 import httpx
 import yt_dlp
+from app.core.config import settings
 from app.domain.schemas import MediaMetadataResponse, MediaFormat, PlatformType
 
 DEFAULT_HTTP_HEADERS = {
@@ -77,7 +78,8 @@ class MediaExtractorService:
         return PlatformType.GENERIC
 
     def _extract_sync(self, url: str) -> Dict[str, Any]:
-        ydl_opts = {
+        cookie_path = settings.get_cookie_file_path()
+        ydl_opts: Dict[str, Any] = {
             "quiet": True,
             "no_warnings": True,
             "skip_download": True,
@@ -86,12 +88,11 @@ class MediaExtractorService:
             "nocheckcertificate": True,
             "http_headers": DEFAULT_HTTP_HEADERS,
             "js_runtimes": {"node": {}},
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["visionos", "android"],
-                }
-            },
+            "remote_components": ["ejs:github"],
         }
+        if cookie_path:
+            ydl_opts["cookiefile"] = cookie_path
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             return ydl.extract_info(url, download=False)
 

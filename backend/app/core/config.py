@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -33,6 +33,22 @@ class Settings(BaseSettings):
     TEMP_DOWNLOAD_DIR: Path = BASE_DIR / "temp_downloads"
     FILE_TTL_SECONDS: int = 1800  # 30 minutes
     MAX_CONCURRENT_DOWNLOADS: int = 5
+    
+    # Optional YouTube Authentication Cookies
+    YOUTUBE_COOKIES_TEXT: Optional[str] = Field(default=None)
+    YOUTUBE_COOKIES_FILE: Optional[str] = Field(default=None)
+
+    def get_cookie_file_path(self) -> Optional[str]:
+        if self.YOUTUBE_COOKIES_FILE and Path(self.YOUTUBE_COOKIES_FILE).exists():
+            return self.YOUTUBE_COOKIES_FILE
+        default_file = self.BASE_DIR / "cookies.txt"
+        if default_file.exists():
+            return str(default_file)
+        if self.YOUTUBE_COOKIES_TEXT:
+            target = self.TEMP_DOWNLOAD_DIR / "auth_cookies.txt"
+            target.write_text(self.YOUTUBE_COOKIES_TEXT, encoding="utf-8")
+            return str(target)
+        return None
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -102,6 +102,7 @@ class MediaDownloaderService:
                     progress_manager.emit_progress(task_id, event), loop
                 )
 
+        cookie_path = settings.get_cookie_file_path()
         opts: Dict[str, Any] = {
             "outtmpl": out_template,
             "quiet": True,
@@ -115,12 +116,11 @@ class MediaDownloaderService:
                 "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
             },
             "js_runtimes": {"node": {}},
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["visionos", "android"],
-                }
-            },
+            "remote_components": ["ejs:github"],
         }
+
+        if cookie_path:
+            opts["cookiefile"] = cookie_path
 
         if custom_format_id:
             opts["format"] = custom_format_id
